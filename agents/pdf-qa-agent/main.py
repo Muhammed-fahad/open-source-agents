@@ -49,12 +49,12 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     return text.strip()
 
 
-def ask_gemini(model, pdf_text: str, question: str, chat_history: list) -> str:
+def ask_gemini(client, model_name: str, pdf_text: str, question: str, chat_history: list) -> str:
     """Send a question about the PDF content to Gemini with conversation context."""
     history_text = ""
     if chat_history:
         history_text = "\nPrevious conversation:\n"
-        for turn in chat_history[-4:]:  # keep last 4 turns for context
+        for turn in chat_history[-4:]:
             history_text += f"Q: {turn['question']}\nA: {turn['answer']}\n\n"
 
     prompt = f"""You are a helpful assistant that answers questions based strictly on the provided PDF content.
@@ -73,7 +73,7 @@ Question: {question}
 
 Answer:"""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model=model_name, contents=prompt)
     return response.text.strip()
 
 
@@ -110,13 +110,12 @@ def main():
 
     # Configure Gemini
     try:
-        import google.generativeai as genai
+        from google import genai
     except ImportError:
-        print("Error: google-generativeai not installed. Run: pip install -r requirements.txt")
+        print("Error: google-genai not installed. Run: pip install -r requirements.txt")
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(args.model)
+    client = genai.Client(api_key=api_key)
 
     # Load PDF
     print(f"\nLoading PDF: {args.pdf_path}")
@@ -164,7 +163,7 @@ def main():
         spin_thread = threading.Thread(target=spinner, args=(stop_event, "Thinking"))
         spin_thread.start()
         try:
-            answer = ask_gemini(model, pdf_text, question, chat_history)
+            answer = ask_gemini(client, args.model, pdf_text, question, chat_history)
             stop_event.set()
             spin_thread.join()
             print(f"\nAnswer:\n{answer}")
