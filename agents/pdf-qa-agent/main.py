@@ -1,0 +1,160 @@
+"""
+PDF Q&A Agent - Ask questions about any PDF using Google Gemini API.
+
+Usage:
+    python main.py path/to/your/file.pdf
+    python main.py report.pdf --model gemini-1.5-pro
+"""
+
+import os
+import sys
+import argparse
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """Extract all text content from a PDF file using pdfplumber."""
+    try:
+        import pdfplumber
+    except ImportError:
+        print("Error: pdfplumber is not installed. Run: pip install -r requirements.txt")
+        sys.exit(1)
+
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
+        print(f"   Reading {total_pages} page(s)...")
+        for i, page in enumerate(pdf.pages, 1):
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+    return text.strip()
+
+
+def ask_gemini(model, pdf_text: str, question: str, chat_history: list) -> str:
+    """Send a question about the PDF content to Gemini with conversation context."""
+    history_text = ""
+    if chat_history:
+        history_text = "\nPrevious conversation:\n"
+        for turn in chat_history[-4:]:  # keep last 4 turns for context
+            history_text += f"Q: {turn['question']}\nA: {turn['answer']}\n\n"
+
+    prompt = f"""You are a helpful assistant that answers questions based strictly on the provided PDF content.
+
+Rules:
+- Only use information from the PDF content below to answer.
+- If the answer is not in the PDF, clearly say: "I could not find that information in this PDF."
+- Be concise and accurate.
+- Quote relevant sections when helpful.
+{history_text}
+--- PDF CONTENT START ---
+{pdf_text[:30000]}
+--- PDF CONTENT END ---
+
+Question: {question}
+
+Answer:"""
+
+    response = model.generate_content(prompt)
+    return response.text.strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="PDF Q&A Agent - Ask questions about any PDF using Google Gemini",
+        epilog="Example: python main.py report.pdf"
+    )
+    parser.add_argument("pdf_path", help="Path to the PDF file you want to query")
+    parser.add_argument(
+        "--model",
+        default="gemini-2.5-flash",
+        help="Gemini model to use (default: gemini-2.5-flash)"
+    )
+    args = parser.parse_args()
+
+    # Validate PDF path
+    if not os.path.exists(args.pdf_path):
+        print(f"Error: File not found: {args.pdf_path}")
+        sys.exit(1)
+
+    if not args.pdf_path.lower().endswith(".pdf"):
+        print("Error: The file must be a PDF (.pdf extension required).")
+        sys.exit(1)
+
+    # Load API key
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Error: GEMINI_API_KEY is not set.")
+        print("  1. Copy .env.example to .env")
+        print("  2. Add your key: GEMINI_API_KEY=your_key_here")
+        print("  3. Get a free key at: https://aistudio.google.com/apikey")
+        sys.exit(1)
+
+    # Configure Gemini
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        print("Error: google-generativeai not installed. Run: pip install -r requirements.txt")
+        sys.exit(1)
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(args.model)
+
+    # Load PDF
+    print(f"\nLoading PDF: {args.pdf_path}")
+    try:
+        pdf_text = extract_text_from_pdf(args.pdf_path)
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        sys.exit(1)
+
+    if not pdf_text:
+        print("Error: No text could be extracted from this PDF.")
+        print("  The PDF may be image-based or scanned (OCR not supported).")
+        sys.exit(1)
+
+    word_count = len(pdf_text.split())
+    char_count = len(pdf_text)
+    print(f"PDF loaded successfully! ({word_count:,} words, {char_count:,} characters)")
+
+    if char_count > 30000:
+        print("Note: Large PDF detected. Only the first ~30,000 characters will be sent per query.")
+
+    print(f"\nModel: {args.model}")
+    print("Ask any question about your PDF. Type 'quit' to exit.")
+    print("=" * 60)
+
+    chat_history = []
+
+    while True:
+        print()
+        try:
+            question = input("Your question: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\nGoodbye!")
+            break
+
+        if not question:
+            print("  (Please enter a question)")
+            continue
+
+        if question.lower() in ("quit", "exit", "q", "bye"):
+            print("Goodbye!")
+            break
+
+        print("Thinking...")
+        try:
+            answer = ask_gemini(model, pdf_text, question, chat_history)
+            print(f"\nAnswer:\n{answer}")
+            print("\n" + "-" * 60)
+            chat_history.append({"question": question, "answer": answer})
+        except Exception as e:
+            print(f"Error: {e}")
+            print("  Check your API key and internet connection.")
+
+
+if __name__ == "__main__":
+    main()
