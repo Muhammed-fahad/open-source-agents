@@ -22,7 +22,7 @@
 
 - **Language & Runtime**: Python 3.10+
 - **Agent Framework**: Vanilla Python (no heavy framework needed)
-- **Model**: Google Gemini 2.5 Flash (via `google-generativeai` SDK)
+- **Model**: Google Gemini 2.0 Flash (via `google-genai` SDK)
 - **PDF Parsing**: `pdfplumber`
 - **External APIs**: Google Gemini API (free tier available)
 
