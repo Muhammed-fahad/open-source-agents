@@ -85,8 +85,8 @@ def main():
     parser.add_argument("pdf_path", help="Path to the PDF file you want to query")
     parser.add_argument(
         "--model",
-        default="gemini-2.0-flash",
-        help="Gemini model to use (default: gemini-2.0-flash)"
+        default="gemini-3.8-flash",
+        help="Gemini model to use (default: gemini-3.8-flash)"
     )
     args = parser.parse_args()
 
