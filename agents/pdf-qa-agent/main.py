@@ -9,10 +9,25 @@ Usage:
 import os
 import sys
 import argparse
+import threading
+import itertools
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+def spinner(stop_event: threading.Event, message: str = "Thinking"):
+    """Show an animated spinner while waiting for API response."""
+    for frame in itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]):
+        if stop_event.is_set():
+            break
+        sys.stdout.write(f"\r{message}... {frame} ")
+        sys.stdout.flush()
+        time.sleep(0.1)
+    sys.stdout.write("\r" + " " * 30 + "\r")  # clear the spinner line
+    sys.stdout.flush()
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
@@ -51,7 +66,7 @@ Rules:
 - Quote relevant sections when helpful.
 {history_text}
 --- PDF CONTENT START ---
-{pdf_text[:30000]}
+{pdf_text[:20000]}
 --- PDF CONTENT END ---
 
 Question: {question}
@@ -70,8 +85,8 @@ def main():
     parser.add_argument("pdf_path", help="Path to the PDF file you want to query")
     parser.add_argument(
         "--model",
-        default="gemini-2.5-flash",
-        help="Gemini model to use (default: gemini-2.5-flash)"
+        default="gemini-1.5-flash",
+        help="Gemini model to use (default: gemini-1.5-flash)"
     )
     args = parser.parse_args()
 
@@ -145,13 +160,19 @@ def main():
             print("Goodbye!")
             break
 
-        print("Thinking...")
+        stop_event = threading.Event()
+        spin_thread = threading.Thread(target=spinner, args=(stop_event, "Thinking"))
+        spin_thread.start()
         try:
             answer = ask_gemini(model, pdf_text, question, chat_history)
+            stop_event.set()
+            spin_thread.join()
             print(f"\nAnswer:\n{answer}")
             print("\n" + "-" * 60)
             chat_history.append({"question": question, "answer": answer})
         except Exception as e:
+            stop_event.set()
+            spin_thread.join()
             print(f"Error: {e}")
             print("  Check your API key and internet connection.")
 
