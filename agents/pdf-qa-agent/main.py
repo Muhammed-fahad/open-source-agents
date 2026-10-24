@@ -73,8 +73,22 @@ Question: {question}
 
 Answer:"""
 
-    response = client.models.generate_content(model=model_name, contents=prompt)
-    return response.text.strip()
+    # Retry up to 3 times on 503 / server errors
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            return response.text.strip()
+        except Exception as e:
+            err = str(e)
+            if "503" in err or "UNAVAILABLE" in err:
+                wait = 5 * (attempt + 1)
+                sys.stdout.write(f"\r  Model busy, retrying in {wait}s... ({attempt+1}/{max_retries})")
+                sys.stdout.flush()
+                time.sleep(wait)
+            else:
+                raise  # re-raise non-503 errors immediately
+    raise Exception("Model is currently unavailable after 3 retries. Please try again in a moment.")
 
 
 def main():
